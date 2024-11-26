@@ -28,7 +28,7 @@ class UserBase(BaseModel):
         None, 
         min_length=3,
         max_length=30,
-        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$',  # Must start with alphanumeric, can contain underscore/hyphen
+        pattern=None,  
         example=generate_nickname()
     )
     first_name: Optional[str] = Field(None, example="John")
@@ -42,10 +42,16 @@ class UserBase(BaseModel):
     def validate_nickname(cls, v):
         if v is None:
             return v
+        if len(v) < 3:
+            raise ValueError('Nickname must be at least 3 characters long')
+        if len(v) > 30:
+            raise ValueError('Nickname must be at most 30 characters long')
         if not v[0].isalnum():
             raise ValueError('Nickname must start with a letter or number')
         if '--' in v or '__' in v:
             raise ValueError('Nickname cannot contain consecutive hyphens or underscores')
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', v):
+            raise ValueError('Nickname can only contain letters, numbers, underscores, and hyphens')
         return v
 
     _validate_urls = validator('profile_picture_url', 'linkedin_profile_url', 'github_profile_url', pre=True, allow_reuse=True)(validate_url)
@@ -62,7 +68,7 @@ class UserUpdate(UserBase):
         None, 
         min_length=3,
         max_length=30,
-        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$',  # Must start with alphanumeric, can contain underscore/hyphen
+        pattern=None,  
         example="john_doe123"
     )
     first_name: Optional[str] = Field(None, example="John")
@@ -86,7 +92,7 @@ class UserResponse(UserBase):
         None, 
         min_length=3,
         max_length=30,
-        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$',  # Must start with alphanumeric, can contain underscore/hyphen
+        pattern=None,  
         example=generate_nickname()
     )    
     role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
@@ -96,10 +102,16 @@ class UserResponse(UserBase):
     def validate_nickname(cls, v):
         if v is None:
             return v
+        if len(v) < 3:
+            raise ValueError('Nickname must be at least 3 characters long')
+        if len(v) > 30:
+            raise ValueError('Nickname must be at most 30 characters long')
         if not v[0].isalnum():
             raise ValueError('Nickname must start with a letter or number')
         if '--' in v or '__' in v:
             raise ValueError('Nickname cannot contain consecutive hyphens or underscores')
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', v):
+            raise ValueError('Nickname can only contain letters, numbers, underscores, and hyphens')
         return v
 
 class LoginRequest(BaseModel):
