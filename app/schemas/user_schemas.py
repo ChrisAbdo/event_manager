@@ -65,8 +65,34 @@ def validate_profile_picture_url(url: Optional[str]) -> Optional[str]:
         return url
     raise ValueError('Profile picture URL must end with .jpg, .jpeg, .png, or .gif')
 
+def validate_email_format(email: str) -> str:
+    """
+    Additional email format validation beyond Pydantic's EmailStr
+    """
+    if not email:
+        raise ValueError("Email is required")
+    
+    # Check length
+    if len(email) > 255:
+        raise ValueError("Email must be at most 255 characters long")
+        
+    # Check for common patterns
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_regex, email):
+        raise ValueError("Invalid email format")
+        
+    # Check for common mistakes
+    if '..' in email or email.startswith('.') or email.endswith('.'):
+        raise ValueError("Invalid email format: consecutive dots not allowed")
+        
+    return email.lower()  # Normalize to lowercase
+
 class UserBase(BaseModel):
-    email: EmailStr = Field(..., example="john.doe@example.com")
+    email: EmailStr = Field(
+        ..., 
+        example="john.doe@example.com",
+        description="Email must be a valid format and unique in the system"
+    )
     nickname: Optional[str] = Field(
         None, 
         min_length=3,
@@ -110,6 +136,10 @@ class UserBase(BaseModel):
             return validate_profile_picture_url(v)
         return v
 
+    @validator('email')
+    def validate_email(cls, v):
+        return validate_email_format(v)
+
     _validate_social_urls = validator('linkedin_profile_url', 'github_profile_url', pre=True, allow_reuse=True)(validate_url)
 
     class Config:
@@ -129,7 +159,11 @@ class UserCreate(UserBase):
         return validate_password(v)
 
 class UserUpdate(UserBase):
-    email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
+    email: Optional[EmailStr] = Field(
+        None, 
+        example="john.doe@example.com",
+        description="Email must be a valid format and unique in the system"
+    )
     nickname: Optional[str] = Field(
         None, 
         min_length=3,
@@ -153,7 +187,11 @@ class UserUpdate(UserBase):
         if not any(values.values()):
             raise ValueError("At least one field must be provided for update")
         
-        # Handle simultaneous updates
+        # Validate email if provided
+        if 'email' in values and values['email']:
+            values['email'] = validate_email_format(values['email'])
+            
+        # Handle other validations
         if 'profile_picture_url' in values and values['profile_picture_url']:
             validate_profile_picture_url(values['profile_picture_url'])
         
@@ -164,15 +202,6 @@ class UserUpdate(UserBase):
 
 class UserResponse(UserBase):
     id: uuid.UUID = Field(..., example=uuid.uuid4())
-    role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
-    email: EmailStr = Field(..., example="john.doe@example.com")
-    nickname: Optional[str] = Field(
-        None, 
-        min_length=3,
-        max_length=30,
-        pattern=None,  
-        example=generate_nickname()
-    )    
     role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
     is_professional: Optional[bool] = Field(default=False, example=True)
 
