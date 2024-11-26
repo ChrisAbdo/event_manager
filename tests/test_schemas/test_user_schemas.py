@@ -67,3 +67,54 @@ def test_user_base_invalid_email(user_base_data_invalid):
     
     assert "value is not a valid email address" in str(exc_info.value)
     assert "john.doe.example.com" in str(exc_info.value)
+
+def test_password_validation():
+    # Test valid passwords
+    valid_passwords = [
+        "SecureP@ss123",
+        "MyP@ssw0rd",
+        "C0mpl3x!Pass",
+        "Str0ng#P@ssword",
+        "Test1ng@Password"
+    ]
+    
+    for password in valid_passwords:
+        user = UserCreate(
+            email="test@example.com",
+            password=password,
+            nickname="testuser"
+        )
+        assert user.password == password
+
+    # Test invalid passwords
+    invalid_passwords = [
+        "short1",  # too short
+        "nocaps1!",  # no uppercase
+        "NOLOW3R!",  # no lowercase
+        "NoNumbers!",  # no numbers
+        "NoSpecial1",  # no special characters
+        "a" * 101,  # too long
+    ]
+    
+    for password in invalid_passwords:
+        with pytest.raises(ValidationError) as exc_info:
+            UserCreate(
+                email="test@example.com",
+                password=password,
+                nickname="testuser"
+            )
+        
+        # Check specific error messages
+        error_msg = str(exc_info.value)
+        if password == "short1":
+            assert "Password must be at least 8 characters long" in error_msg
+        elif password == "nocaps1!":
+            assert "Password must contain at least one uppercase letter" in error_msg
+        elif password == "NOLOW3R!":
+            assert "Password must contain at least one lowercase letter" in error_msg
+        elif password == "NoNumbers!":
+            assert "Password must contain at least one number" in error_msg
+        elif password == "NoSpecial1":
+            assert "Password must contain at least one special character" in error_msg
+        elif len(password) > 100:
+            assert "Password must be at most 100 characters long" in error_msg

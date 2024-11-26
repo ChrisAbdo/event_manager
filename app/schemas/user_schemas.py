@@ -22,6 +22,30 @@ def validate_url(url: Optional[str]) -> Optional[str]:
         raise ValueError('Invalid URL format')
     return url
 
+def validate_password(password: str) -> str:
+    """
+    Validate password meets security requirements:
+    - Minimum 8 characters
+    - Maximum 100 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character
+    """
+    if len(password) < 8:
+        raise ValueError("Password must be at least 8 characters long")
+    if len(password) > 100:
+        raise ValueError("Password must be at most 100 characters long")
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.islower() for c in password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one number")
+    if not any(c in "!@#$%^&*(),.?\":{}|<>" for c in password):
+        raise ValueError("Password must contain at least one special character")
+    return password
+
 class UserBase(BaseModel):
     email: EmailStr = Field(..., example="john.doe@example.com")
     nickname: Optional[str] = Field(
@@ -58,9 +82,19 @@ class UserBase(BaseModel):
  
     class Config:
         from_attributes = True
+
 class UserCreate(UserBase):
     email: EmailStr = Field(..., example="john.doe@example.com")
-    password: str = Field(..., example="Secure*1234")
+    password: str = Field(
+        ..., 
+        min_length=8,
+        max_length=100,
+        example="SecureP@ss123"
+    )
+
+    @validator('password')
+    def validate_password_requirements(cls, v):
+        return validate_password(v)
 
 class UserUpdate(UserBase):
     email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
