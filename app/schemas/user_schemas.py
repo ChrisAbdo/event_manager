@@ -87,6 +87,19 @@ def validate_email_format(email: str) -> str:
         
     return email.lower()  # Normalize to lowercase
 
+def validate_role_transition(current_role: UserRole, new_role: UserRole) -> bool:
+    """
+    Validate if a role transition is allowed based on role hierarchy
+    """
+    role_hierarchy = {
+        UserRole.ANONYMOUS: [UserRole.AUTHENTICATED],
+        UserRole.AUTHENTICATED: [UserRole.MANAGER],
+        UserRole.MANAGER: [UserRole.ADMIN],
+        UserRole.ADMIN: []
+    }
+    
+    return new_role in role_hierarchy.get(current_role, [])
+
 class UserBase(BaseModel):
     email: EmailStr = Field(
         ..., 
@@ -180,6 +193,10 @@ class UserUpdate(UserBase):
     profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
     linkedin_profile_url: Optional[str] = Field(None, example="https://linkedin.com/in/johndoe")
     github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
+    role: Optional[UserRole] = Field(
+        None,
+        description="User role in the system. Role transitions must follow the hierarchy."
+    )
 
     @root_validator(pre=True)
     def check_update_fields(cls, values):
@@ -190,13 +207,17 @@ class UserUpdate(UserBase):
         # Validate email if provided
         if 'email' in values and values['email']:
             values['email'] = validate_email_format(values['email'])
-            
+        
         # Handle other validations
         if 'profile_picture_url' in values and values['profile_picture_url']:
             validate_profile_picture_url(values['profile_picture_url'])
         
         if 'bio' in values and values['bio']:
             validate_bio_length(values['bio'])
+            
+        if 'role' in values and values['role']:
+            if values['role'] not in [role.value for role in UserRole]:
+                raise ValueError(f"Invalid role. Must be one of: {', '.join([role.value for role in UserRole])}")
 
         return values
 
