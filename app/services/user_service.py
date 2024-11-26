@@ -115,7 +115,7 @@ class UserService:
             updated_user = await cls.get_by_id(session, user_id)
             if updated_user:
                 session.refresh(updated_user)
-                logger.info(f"User {user_id} updated successfully.")
+                logger.info(f"User {user_id} updated successfully with role changes: {'role' in validated_data}")
                 return updated_user
             else:
                 logger.error(f"User {user_id} not found after update attempt.")
