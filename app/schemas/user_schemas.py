@@ -24,7 +24,13 @@ def validate_url(url: Optional[str]) -> Optional[str]:
 
 class UserBase(BaseModel):
     email: EmailStr = Field(..., example="john.doe@example.com")
-    nickname: Optional[str] = Field(None, min_length=3, pattern=r'^[\w-]+$', example=generate_nickname())
+    nickname: Optional[str] = Field(
+        None, 
+        min_length=3,
+        max_length=30,
+        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$',  # Must start with alphanumeric, can contain underscore/hyphen
+        example=generate_nickname()
+    )
     first_name: Optional[str] = Field(None, example="John")
     last_name: Optional[str] = Field(None, example="Doe")
     bio: Optional[str] = Field(None, example="Experienced software developer specializing in web applications.")
@@ -32,18 +38,33 @@ class UserBase(BaseModel):
     linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
     github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
 
+    @validator('nickname')
+    def validate_nickname(cls, v):
+        if v is None:
+            return v
+        if not v[0].isalnum():
+            raise ValueError('Nickname must start with a letter or number')
+        if '--' in v or '__' in v:
+            raise ValueError('Nickname cannot contain consecutive hyphens or underscores')
+        return v
+
     _validate_urls = validator('profile_picture_url', 'linkedin_profile_url', 'github_profile_url', pre=True, allow_reuse=True)(validate_url)
  
     class Config:
         from_attributes = True
-
 class UserCreate(UserBase):
     email: EmailStr = Field(..., example="john.doe@example.com")
     password: str = Field(..., example="Secure*1234")
 
 class UserUpdate(UserBase):
     email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
-    nickname: Optional[str] = Field(None, min_length=3, pattern=r'^[\w-]+$', example="john_doe123")
+    nickname: Optional[str] = Field(
+        None, 
+        min_length=3,
+        max_length=30,
+        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$',  # Must start with alphanumeric, can contain underscore/hyphen
+        example="john_doe123"
+    )
     first_name: Optional[str] = Field(None, example="John")
     last_name: Optional[str] = Field(None, example="Doe")
     bio: Optional[str] = Field(None, example="Experienced software developer specializing in web applications.")
@@ -61,9 +82,25 @@ class UserResponse(UserBase):
     id: uuid.UUID = Field(..., example=uuid.uuid4())
     role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
     email: EmailStr = Field(..., example="john.doe@example.com")
-    nickname: Optional[str] = Field(None, min_length=3, pattern=r'^[\w-]+$', example=generate_nickname())    
+    nickname: Optional[str] = Field(
+        None, 
+        min_length=3,
+        max_length=30,
+        pattern=r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$',  # Must start with alphanumeric, can contain underscore/hyphen
+        example=generate_nickname()
+    )    
     role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
     is_professional: Optional[bool] = Field(default=False, example=True)
+
+    @validator('nickname')
+    def validate_nickname(cls, v):
+        if v is None:
+            return v
+        if not v[0].isalnum():
+            raise ValueError('Nickname must start with a letter or number')
+        if '--' in v or '__' in v:
+            raise ValueError('Nickname cannot contain consecutive hyphens or underscores')
+        return v
 
 class LoginRequest(BaseModel):
     email: str = Field(..., example="john.doe@example.com")
