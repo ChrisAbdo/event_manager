@@ -78,7 +78,6 @@ class UserBase(BaseModel):
     last_name: Optional[str] = Field(None, example="Doe")
     bio: Optional[str] = Field(
         None, 
-        max_length=500,
         example="Experienced software developer specializing in web applications."
     )
     profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
@@ -142,7 +141,6 @@ class UserUpdate(UserBase):
     last_name: Optional[str] = Field(None, example="Doe")
     bio: Optional[str] = Field(
         None, 
-        max_length=500,
         example="Experienced software developer specializing in web applications."
     )
     profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
