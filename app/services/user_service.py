@@ -7,17 +7,26 @@ from sqlalchemy import func, null, update, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_email_service, get_settings
-from app.models.user_model import User
+from app.models.user_model import User, UserRole
 from app.schemas.user_schemas import UserCreate, UserUpdate
 from app.utils.nickname_gen import generate_nickname
 from app.utils.security import generate_verification_token, hash_password, verify_password
 from uuid import UUID
 from app.services.email_service import EmailService
-from app.models.user_model import UserRole
 import logging
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+
+def validate_role_transition(current_role: UserRole, new_role: UserRole) -> bool:
+    # Define valid role transitions
+    valid_transitions = {
+        UserRole.UNAUTHENTICATED: [UserRole.AUTHENTICATED],
+        UserRole.AUTHENTICATED: [UserRole.ADMIN],
+        UserRole.ADMIN: []
+    }
+    
+    return new_role in valid_transitions.get(current_role, [])
 
 class UserService:
     @classmethod
@@ -76,6 +85,12 @@ class UserService:
     @classmethod
     async def update(cls, session: AsyncSession, user_id: UUID, update_data: Dict[str, str]) -> Optional[User]:
         try:
+            # Get current user for role validation
+            current_user = await cls.get_by_id(session, user_id)
+            if not current_user:
+                logger.error(f"User {user_id} not found")
+                return None
+
             validated_data = UserUpdate(**update_data).dict(exclude_unset=True)
 
             # Check for duplicate email if email is being updated
@@ -85,6 +100,13 @@ class UserService:
                     logger.error(f"Email {validated_data['email']} is already in use by another user")
                     raise ValueError("Email is already in use by another user")
 
+            # Validate role transition if role is being updated
+            if 'role' in validated_data:
+                new_role = UserRole(validated_data['role'])
+                if not validate_role_transition(current_user.role, new_role):
+                    logger.error(f"Invalid role transition from {current_user.role} to {new_role}")
+                    raise ValueError(f"Invalid role transition from {current_user.role} to {new_role}")
+
             if 'password' in validated_data:
                 validated_data['hashed_password'] = hash_password(validated_data.pop('password'))
                 
@@ -93,7 +115,7 @@ class UserService:
             updated_user = await cls.get_by_id(session, user_id)
             if updated_user:
                 session.refresh(updated_user)
-                logger.info(f"User {user_id} updated successfully.")
+                logger.info(f"User {user_id} updated successfully with role changes: {'role' in validated_data}")
                 return updated_user
             else:
                 logger.error(f"User {user_id} not found after update attempt.")
