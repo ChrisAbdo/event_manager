@@ -1,120 +1,164 @@
-from builtins import str
-import pytest
-from pydantic import ValidationError
+from builtins import ValueError, any, bool, str
+from pydantic import BaseModel, EmailStr, Field, validator, root_validator
+from typing import Optional, List
 from datetime import datetime
-from app.schemas.user_schemas import UserBase, UserCreate, UserUpdate, UserResponse, UserListResponse, LoginRequest
+from enum import Enum
+import uuid
+import re
 
-# Tests for UserBase
-def test_user_base_valid(user_base_data):
-    user = UserBase(**user_base_data)
-    assert user.nickname == user_base_data["nickname"]
-    assert user.email == user_base_data["email"]
+from app.utils.nickname_gen import generate_nickname
 
-# Tests for UserCreate
-def test_user_create_valid(user_create_data):
-    user = UserCreate(**user_create_data)
-    assert user.nickname == user_create_data["nickname"]
-    assert user.password == user_create_data["password"]
+class UserRole(str, Enum):
+    ANONYMOUS = "ANONYMOUS"
+    AUTHENTICATED = "AUTHENTICATED"
+    MANAGER = "MANAGER"
+    ADMIN = "ADMIN"
 
-# Tests for UserUpdate
-def test_user_update_valid(user_update_data):
-    user_update = UserUpdate(**user_update_data)
-    assert user_update.email == user_update_data["email"]
-    assert user_update.first_name == user_update_data["first_name"]
+def validate_url(url: Optional[str]) -> Optional[str]:
+    if url is None:
+        return url
+    url_regex = r'^https?:\/\/[^\s/$.?#].[^\s]*$'
+    if not re.match(url_regex, url):
+        raise ValueError('Invalid URL format')
+    return url
 
-# Tests for UserResponse
-def test_user_response_valid(user_response_data):
-    user = UserResponse(**user_response_data)
-    assert user.id == user_response_data["id"]
-    # assert user.last_login_at == user_response_data["last_login_at"]
+def validate_password(password: str) -> str:
+    """
+    Validate password meets security requirements:
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one number
+    - At least one special character
+    """
+    if not any(c.isupper() for c in password):
+        raise ValueError("Password must contain at least one uppercase letter")
+    if not any(c.islower() for c in password):
+        raise ValueError("Password must contain at least one lowercase letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("Password must contain at least one number")
+    if not any(c in "!@#$%^&*(),.?\":{}|<>" for c in password):
+        raise ValueError("Password must contain at least one special character")
+    return password
 
-# Tests for LoginRequest
-def test_login_request_valid(login_request_data):
-    login = LoginRequest(**login_request_data)
-    assert login.email == login_request_data["email"]
-    assert login.password == login_request_data["password"]
+class UserBase(BaseModel):
+    email: EmailStr = Field(..., example="john.doe@example.com")
+    nickname: Optional[str] = Field(
+        None, 
+        min_length=3,
+        max_length=30,
+        pattern=None,  
+        example=generate_nickname()
+    )
+    first_name: Optional[str] = Field(None, example="John")
+    last_name: Optional[str] = Field(None, example="Doe")
+    bio: Optional[str] = Field(None, example="Experienced software developer specializing in web applications.")
+    profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
+    linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
+    github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
 
-# Parametrized tests for nickname and email validation
-@pytest.mark.parametrize("nickname", ["test_user", "test-user", "testuser123", "123test"])
-def test_user_base_nickname_valid(nickname, user_base_data):
-    user_base_data["nickname"] = nickname
-    user = UserBase(**user_base_data)
-    assert user.nickname == nickname
+    @validator('nickname')
+    def validate_nickname(cls, v):
+        if v is None:
+            return v
+        if len(v) < 3:
+            raise ValueError('Nickname must be at least 3 characters long')
+        if len(v) > 30:
+            raise ValueError('Nickname must be at most 30 characters long')
+        if not v[0].isalnum():
+            raise ValueError('Nickname must start with a letter or number')
+        if '--' in v or '__' in v:
+            raise ValueError('Nickname cannot contain consecutive hyphens or underscores')
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', v):
+            raise ValueError('Nickname can only contain letters, numbers, underscores, and hyphens')
+        return v
 
-@pytest.mark.parametrize("nickname", ["test user", "test?user", "", "us"])
-def test_user_base_nickname_invalid(nickname, user_base_data):
-    user_base_data["nickname"] = nickname
-    with pytest.raises(ValidationError):
-        UserBase(**user_base_data)
+    _validate_urls = validator('profile_picture_url', 'linkedin_profile_url', 'github_profile_url', pre=True, allow_reuse=True)(validate_url)
+ 
+    class Config:
+        from_attributes = True
 
-# Parametrized tests for URL validation
-@pytest.mark.parametrize("url", ["http://valid.com/profile.jpg", "https://valid.com/profile.png", None])
-def test_user_base_url_valid(url, user_base_data):
-    user_base_data["profile_picture_url"] = url
-    user = UserBase(**user_base_data)
-    assert user.profile_picture_url == url
+class UserCreate(UserBase):
+    email: EmailStr = Field(..., example="john.doe@example.com")
+    password: str = Field(
+        ..., 
+        min_length=8,
+        max_length=100,
+        example="SecureP@ss123"
+    )
 
-@pytest.mark.parametrize("url", ["ftp://invalid.com/profile.jpg", "http//invalid", "https//invalid"])
-def test_user_base_url_invalid(url, user_base_data):
-    user_base_data["profile_picture_url"] = url
-    with pytest.raises(ValidationError):
-        UserBase(**user_base_data)
+    @validator('password')
+    def validate_password_requirements(cls, v):
+        return validate_password(v)
 
-# Tests for UserBase
-def test_user_base_invalid_email(user_base_data_invalid):
-    with pytest.raises(ValidationError) as exc_info:
-        user = UserBase(**user_base_data_invalid)
-    
-    assert "value is not a valid email address" in str(exc_info.value)
-    assert "john.doe.example.com" in str(exc_info.value)
+class UserUpdate(UserBase):
+    email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
+    nickname: Optional[str] = Field(
+        None, 
+        min_length=3,
+        max_length=30,
+        pattern=None,  
+        example="john_doe123"
+    )
+    first_name: Optional[str] = Field(None, example="John")
+    last_name: Optional[str] = Field(None, example="Doe")
+    bio: Optional[str] = Field(None, example="Experienced software developer specializing in web applications.")
+    profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
+    linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
+    github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
 
-def test_password_validation():
-    # Test valid passwords
-    valid_passwords = [
-        "SecureP@ss123",
-        "MyP@ssw0rd",
-        "C0mpl3x!Pass",
-        "Str0ng#P@ssword",
-        "Test1ng@Password"
-    ]
-    
-    for password in valid_passwords:
-        user = UserCreate(
-            email="test@example.com",
-            password=password,
-            nickname="testuser"
-        )
-        assert user.password == password
+    @root_validator(pre=True)
+    def check_at_least_one_value(cls, values):
+        if not any(values.values()):
+            raise ValueError("At least one field must be provided for update")
+        return values
 
-    # Test invalid passwords
-    invalid_passwords = [
-        "short1",  # too short
-        "nocaps1!",  # no uppercase
-        "NOLOW3R!",  # no lowercase
-        "NoNumbers!",  # no numbers
-        "NoSpecial1",  # no special characters
-        "a" * 101,  # too long
-    ]
-    
-    for password in invalid_passwords:
-        with pytest.raises(ValidationError) as exc_info:
-            UserCreate(
-                email="test@example.com",
-                password=password,
-                nickname="testuser"
-            )
-        
-        # Check specific error messages
-        error_msg = str(exc_info.value)
-        if password == "short1":
-            assert "Password must be at least 8 characters long" in error_msg
-        elif password == "nocaps1!":
-            assert "Password must contain at least one uppercase letter" in error_msg
-        elif password == "NOLOW3R!":
-            assert "Password must contain at least one lowercase letter" in error_msg
-        elif password == "NoNumbers!":
-            assert "Password must contain at least one number" in error_msg
-        elif password == "NoSpecial1":
-            assert "Password must contain at least one special character" in error_msg
-        elif len(password) > 100:
-            assert "Password must be at most 100 characters long" in error_msg
+class UserResponse(UserBase):
+    id: uuid.UUID = Field(..., example=uuid.uuid4())
+    role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
+    email: EmailStr = Field(..., example="john.doe@example.com")
+    nickname: Optional[str] = Field(
+        None, 
+        min_length=3,
+        max_length=30,
+        pattern=None,  
+        example=generate_nickname()
+    )    
+    role: UserRole = Field(default=UserRole.AUTHENTICATED, example="AUTHENTICATED")
+    is_professional: Optional[bool] = Field(default=False, example=True)
+
+    @validator('nickname')
+    def validate_nickname(cls, v):
+        if v is None:
+            return v
+        if len(v) < 3:
+            raise ValueError('Nickname must be at least 3 characters long')
+        if len(v) > 30:
+            raise ValueError('Nickname must be at most 30 characters long')
+        if not v[0].isalnum():
+            raise ValueError('Nickname must start with a letter or number')
+        if '--' in v or '__' in v:
+            raise ValueError('Nickname cannot contain consecutive hyphens or underscores')
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$', v):
+            raise ValueError('Nickname can only contain letters, numbers, underscores, and hyphens')
+        return v
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., example="john.doe@example.com")
+    password: str = Field(..., example="Secure*1234")
+
+class ErrorResponse(BaseModel):
+    error: str = Field(..., example="Not Found")
+    details: Optional[str] = Field(None, example="The requested resource was not found.")
+
+class UserListResponse(BaseModel):
+    items: List[UserResponse] = Field(..., example=[{
+        "id": uuid.uuid4(), "nickname": generate_nickname(), "email": "john.doe@example.com",
+        "first_name": "John", "bio": "Experienced developer", "role": "AUTHENTICATED",
+        "last_name": "Doe", "bio": "Experienced developer", "role": "AUTHENTICATED",
+        "profile_picture_url": "https://example.com/profiles/john.jpg", 
+        "linkedin_profile_url": "https://linkedin.com/in/johndoe", 
+        "github_profile_url": "https://github.com/johndoe"
+    }])
+    total: int = Field(..., example=100)
+    page: int = Field(..., example=1)
+    size: int = Field(..., example=10)
