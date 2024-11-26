@@ -59,29 +59,29 @@ def test_email_update_validation():
         UserUpdate(email="invalid.email@")
 
 @pytest.mark.asyncio
-async def test_duplicate_email_creation(test_db_session: AsyncSession):
+async def test_duplicate_email_creation(db_session: AsyncSession, email_service):
     """Test that creating a user with duplicate email fails"""
     # Create first user
     user_data = {
         "email": "test@example.com",
         "password": "SecurePass123!"
     }
-    user1 = await UserService.create(test_db_session, user_data, None)
+    user1 = await UserService.create(db_session, user_data, email_service)
     assert user1 is not None
     
     # Try to create second user with same email
-    user2 = await UserService.create(test_db_session, user_data, None)
+    user2 = await UserService.create(db_session, user_data, email_service)
     assert user2 is None  # Should fail due to duplicate email
 
 @pytest.mark.asyncio
-async def test_duplicate_email_update(test_db_session: AsyncSession):
+async def test_duplicate_email_update(db_session: AsyncSession, email_service):
     """Test that updating a user with duplicate email fails"""
     # Create first user
     user1_data = {
         "email": "user1@example.com",
         "password": "SecurePass123!"
     }
-    user1 = await UserService.create(test_db_session, user1_data, None)
+    user1 = await UserService.create(db_session, user1_data, email_service)
     assert user1 is not None
     
     # Create second user
@@ -89,12 +89,12 @@ async def test_duplicate_email_update(test_db_session: AsyncSession):
         "email": "user2@example.com",
         "password": "SecurePass123!"
     }
-    user2 = await UserService.create(test_db_session, user2_data, None)
+    user2 = await UserService.create(db_session, user2_data, email_service)
     assert user2 is not None
     
     # Try to update second user with first user's email
     update_result = await UserService.update(
-        test_db_session,
+        db_session,
         user2.id,
         {"email": "user1@example.com"}
     )
